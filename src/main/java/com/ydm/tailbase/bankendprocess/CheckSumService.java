@@ -90,7 +90,7 @@ public class CheckSumService implements Runnable {
             } finally {
                 if (traceIdBatch == null) {
                     try {
-                        Thread.sleep(100);
+                        //Thread.sleep(100);
                     } catch (Throwable e) {
                         // quiet
                     }
