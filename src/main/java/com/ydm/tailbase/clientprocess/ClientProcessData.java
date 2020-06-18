@@ -31,11 +31,11 @@ public class ClientProcessData implements Runnable {
     // an list of trace map,like ring buffe.  key is traceId, value is spans ,  r
     private static List<ConcurrentHashMap<String, List<String>>> BATCH_TRACE_LIST = new ArrayList<>();
     // make 50 bucket to cache traceData
-    private static int BATCH_COUNT = 15;
+    private static int BATCH_COUNT = 50;
 
     private static int READ_POOL_SIZE = 2;
 
-    private static int READ_MAX_SIZE = 4;
+    private static int READ_MAX_SIZE = 3;
 
     public static int THREAD_COUNT = 4;
 
@@ -49,86 +49,9 @@ public class ClientProcessData implements Runnable {
         Thread t = new Thread(new ClientProcessData(), "ProcessDataThread");
         t.start();
     }
-    private static ExecutorService readFileThreadPool = new ThreadPoolExecutor(READ_POOL_SIZE,READ_MAX_SIZE,60, TimeUnit.SECONDS,new SynchronousQueue());
+    private static ExecutorService readFileThreadPool = new ThreadPoolExecutor(READ_POOL_SIZE,READ_MAX_SIZE,60, TimeUnit.SECONDS,new LinkedBlockingQueue());
 
-    private void mutilDowndoading(int threadId, long startPos, long endPos, String path,boolean finishFlag){
-        Runnable task = new Runnable(){
-            @Override
-            public void run() {
-                try {
-                    URL url = new URL(path);
-                    LOGGER.info("data path:[{}]" + path);
-                    HttpURLConnection httpURLConnection =(HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
-                    httpURLConnection.setRequestProperty("Range","bytes="+String.valueOf(startPos)+"-"+String.valueOf(endPos));
-                    httpURLConnection.connect();
-                    InputStream input = httpURLConnection.getInputStream();
-                    BufferedReader bf = new BufferedReader(new InputStreamReader(input));
-                    String line;
-                    long count = 0;
-                    int pos = 0;
-                    Set<String> badTraceIdList = new HashSet<>(1000);
-                    Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(pos);
-                    while ((line = bf.readLine()) != null) {
-                        count++;
-                        String[] cols = line.split("\\|");
-                        if (cols != null && cols.length > 1 ) {
-                            String traceId = cols[0];
-                            List<String> spanList = traceMap.get(traceId);
-                            if (spanList == null) {
-                                spanList = new ArrayList<>();
-                                traceMap.put(traceId, spanList);
-                            }
-                            spanList.add(line);
-                            if (cols.length > 8) {
-                                String tags = cols[8];
-                                if (tags != null) {
-                                    if (tags.contains("error=1")) {
-                                        badTraceIdList.add(traceId);
-                                    } else if (tags.contains("http.status_code=") && tags.indexOf("http.status_code=200") < 0) {
-                                        badTraceIdList.add(traceId);
-                                    }
-                                }
-                            }
-                        }
-                        if (count % Constants.BATCH_SIZE == 0) {
-                            pos++;
-                            // loop cycle
-                            if (pos >= BATCH_COUNT) {
-                                pos = 0;
-                            }
-                            traceMap = BATCH_TRACE_LIST.get(pos);
-                            // donot produce data, wait backend to consume data
-                            // TODO to use lock/notify
-                            synchronized(traceMap){
-                                if (traceMap.size() > 0) {
-                                    while (true) {
-                                        if (traceMap.size() == 0) {
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            // batchPos begin from 0, so need to minus 1
-                            int batchPos = (int) count / Constants.BATCH_SIZE - 1;
-                            updateWrongTraceId(badTraceIdList, batchPos);
-                            badTraceIdList.clear();
-                            LOGGER.info("suc to updateBadTraceId, batchPos:" + batchPos);
-                        }
-                    }
-                    updateWrongTraceId(badTraceIdList, (int) (count / Constants.BATCH_SIZE - 1));
-                    bf.close();
-                    input.close();
-                    if(finishFlag){
-                        callFinish();
-                    }
-                } catch (Exception e) {
-                    LOGGER.info("data path:" + path);
-                    e.printStackTrace();
-                }
-            }
-        };
-        readFileThreadPool.execute(task);
-    }
+
 
     @Override
     public void run() {
@@ -140,25 +63,71 @@ public class ClientProcessData implements Runnable {
                 return;
             }
             URL url = new URL(path);
-            LOGGER.info("data path:[{}]" + path);
-
             HttpURLConnection httpConnection = (HttpURLConnection) url.openConnection(Proxy.NO_PROXY);
             int contentLength = httpConnection.getContentLength();
             httpConnection.disconnect();
             int blockSize = contentLength/THREAD_COUNT;
-            boolean finishFlag = false;
-            for (int threadId = 1; threadId <= THREAD_COUNT; threadId++) {
-                // 获取每一个线程下载的起始位置和结束位置
-                long startPos = (threadId - 1) * blockSize;
-                long endPos = threadId * blockSize - 1;
-                if (threadId == THREAD_COUNT) {
-                    endPos = contentLength;
-                    finishFlag = true;
+            LOGGER.info("contentLengh:"+contentLength);
+            LOGGER.info("data path:" + path);
+            HttpURLConnection httpURLConnection =(HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
+            httpURLConnection.connect();
+            InputStream input = httpURLConnection.getInputStream();
+            BufferedReader bf = new BufferedReader(new InputStreamReader(input));
+            String line;
+            long count = 0;
+            int pos = 0;
+            Set<String> badTraceIdList = new HashSet<>(1000);
+            Set<String> badTraceIdListToThread = new HashSet<>(1000);
+            Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(pos);
+            while ((line = bf.readLine()) != null) {
+                count++;
+                String[] cols = line.split("\\|");
+                if (cols != null && cols.length > 1 ) {
+                    String traceId = cols[0];
+                    List<String> spanList = traceMap.get(traceId);
+                    if (spanList == null) {
+                        spanList = new ArrayList<>();
+                        traceMap.put(traceId, spanList);
+                    }
+                    spanList.add(line);
+                    if (cols.length > 8) {
+                        String tags = cols[8];
+                        if (tags != null) {
+                            if (tags.contains("error=1")) {
+                                badTraceIdList.add(traceId);
+                                badTraceIdListToThread.add(traceId);
+                            } else if (tags.contains("http.status_code=") && tags.indexOf("http.status_code=200") < 0) {
+                                badTraceIdList.add(traceId);
+                                badTraceIdListToThread.add(traceId);
+                            }
+                        }
+                    }
                 }
-                // 然后通过在不同线程里面实现下载逻辑
-                // 具体实现在mutilDowndoading()
-                mutilDowndoading(threadId, startPos, endPos, path,finishFlag);
+                if (count % Constants.BATCH_SIZE == 0) {
+                    pos++;
+                    // loop cycle
+                    if (pos >= BATCH_COUNT) {
+                        pos = 0;
+                    }
+                    traceMap = BATCH_TRACE_LIST.get(pos);
+                    // batchPos begin from 0, so need to minus 1
+                    int batchPos = (int) count / Constants.BATCH_SIZE - 1;
+                    // donot produce data, wait backend to consume data
+                    // TODO to use lock/notify
+                    if (traceMap.size() > 0) {
+                        mutilDeal(badTraceIdListToThread, batchPos,pos);
+                    }else{
+                        updateWrongTraceId(badTraceIdList, (int) (count / Constants.BATCH_SIZE - 1));
+                        badTraceIdList.clear();
+                        LOGGER.info("suc to updateBadTraceId, batchPos:" + batchPos+":::count"+count);
+                    }
+                }
             }
+            LOGGER.info("mylog to updateWrongTraceId, count:" + count);
+            updateWrongTraceId(badTraceIdList, (int) (count / Constants.BATCH_SIZE - 1));
+            bf.close();
+            input.close();
+            callFinish();
         } catch (Exception e) {
             LOGGER.warn("fail to process data", e);
         }
@@ -235,8 +204,8 @@ public class ClientProcessData implements Runnable {
                 }
                 // output spanlist to check
                 String spanListString = spanList.stream().collect(Collectors.joining("\n"));
-                LOGGER.info(String.format("getWrongTracing, batchPos:%d, pos:%d, traceId:%s, spanList:\n %s",
-                        batchPos, pos,  traceId, spanListString));
+                LOGGER.info(String.format("getWrongTracing, batchPos:%d, pos:%d, traceId:%s",
+                        batchPos, pos,  traceId));
             }
         }
     }
@@ -250,5 +219,22 @@ public class ClientProcessData implements Runnable {
         } else {
             return null;
         }
+    }
+    private void mutilDeal(Set<String> badTraceIdList,int batchPos,int pos){
+        Runnable task = new Runnable(){
+            @Override
+            public void run() {
+                Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(pos);
+                while (true) {
+                    if (traceMap.size() == 0) {
+                        updateWrongTraceId(badTraceIdList,batchPos);
+                        LOGGER.info("suc to updateBadTraceId, batchPos:" + batchPos+":::countNull");
+                        badTraceIdList.clear();
+                        break;
+                    }
+                }
+            }
+        };
+        readFileThreadPool.execute(task);
     }
 }
