@@ -27,6 +27,8 @@ public class CheckSumService implements Runnable {
     // save chuckSum for the total wrong trace
     private static Map<String, String> TRACE_CHUCKSUM_MAP= new ConcurrentHashMap<>();
 
+    private static long  countTime = 0l;
+    private static long  countTime2 = 0l;
     public static void start() {
         Thread t = new Thread(new CheckSumService(), "CheckSumServiceThread");
         t.start();
@@ -42,19 +44,25 @@ public class CheckSumService implements Runnable {
                 if (traceIdBatch == null) {
                     // send checksum when client process has all finished.
                     if (BackendController.isFinished()) {
+                        LOGGER.info("countTime:::::::::::"+countTime);
+                        LOGGER.info("countTime2:::::::::::"+countTime2);
                         if (sendCheckSum()) {
                             break;
                         }
                     }
                     continue;
                 }
+                long start = System.currentTimeMillis();
                 Map<String, Set<String>> map = new HashMap<>();
                 if (traceIdBatch.getTraceIdList().size() > 0) {
                     int batchPos = traceIdBatch.getBatchPos();
                     // to get all spans from remote
                     for (String port : ports) {
+                        long start2 = System.currentTimeMillis();
                         Map<String, List<String>> processMap =
                                 getWrongTrace(JSON.toJSONString(traceIdBatch.getTraceIdList()), port, batchPos);
+                        long end2 = System.currentTimeMillis();
+                        countTime2 = countTime2 + (end2 - start2);
                         if (processMap != null) {
                             for (Map.Entry<String, List<String>> entry : processMap.entrySet()) {
                                 String traceId = entry.getKey();
@@ -77,9 +85,10 @@ public class CheckSumService implements Runnable {
                             Comparator.comparing(CheckSumService::getStartTime)).collect(Collectors.joining("\n"));
                     spans = spans + "\n";
                     // output all span to check
-                    LOGGER.info("traceId:" + traceId + ",value:\n" + spans);
                     TRACE_CHUCKSUM_MAP.put(traceId, Util.MD5(spans));
                 }
+                long end = System.currentTimeMillis();
+                countTime = countTime + (end - start);
             } catch (Exception e) {
                 // record batchPos when an exception  occurs.
                 int batchPos = 0;

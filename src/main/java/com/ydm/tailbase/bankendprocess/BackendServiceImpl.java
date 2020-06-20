@@ -1,11 +1,21 @@
 package com.ydm.tailbase.bankendprocess;
 
 
+import com.alibaba.dubbo.config.annotation.Service;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+
 
 public class BackendServiceImpl implements BackendService{
-    /*private static final Logger LOGGER = LoggerFactory.getLogger(BackendServiceImpl.class.getName());
+    private static final Logger LOGGER = LoggerFactory.getLogger(BackendServiceImpl.class.getName());
     private static int BATCH_COUNT = 90;
-    private static List<TraceIdBatch> TRACEID_BATCH_LIST= new ArrayList<>();
+    public static List<TraceIdBatch> TRACEID_BATCH_LIST= new ArrayList<>();
     public static  void init() {
         for (int i = 0; i < BATCH_COUNT; i++) {
             TRACEID_BATCH_LIST.add(new TraceIdBatch());
@@ -16,7 +26,6 @@ public class BackendServiceImpl implements BackendService{
         int pos = batchPos % BATCH_COUNT;
         List<String> traceIdList = JSON.parseObject(traceIdListJson, new TypeReference<List<String>>() {
         });
-        LOGGER.info(String.format("setWrongTraceId had called, batchPos:%d, traceIdList:%s", batchPos, traceIdListJson));
         TraceIdBatch traceIdBatch = TRACEID_BATCH_LIST.get(pos);
         if (traceIdBatch.getBatchPos() != 0 && traceIdBatch.getBatchPos() != batchPos) {
             LOGGER.warn("overwrite traceId batch when call setWrongTraceId");
@@ -27,5 +36,5 @@ public class BackendServiceImpl implements BackendService{
             traceIdBatch.setProcessCount(traceIdBatch.getProcessCount() + 1);
             traceIdBatch.getTraceIdList().addAll(traceIdList);
         }
-    }*/
+    }
 }

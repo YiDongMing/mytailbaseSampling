@@ -1,8 +1,9 @@
 package com.ydm.tailbase.bankendprocess;
 
-import org.springframework.stereotype.Service;
+import com.alibaba.dubbo.config.annotation.Service;
+import org.springframework.stereotype.Component;
 
-@Service
+
 public interface BackendService {
-    //public void setWrongTraceId(String traceIdListJson,int batchPos);
+    public void setWrongTraceId(String traceIdListJson,int batchPos);
 }

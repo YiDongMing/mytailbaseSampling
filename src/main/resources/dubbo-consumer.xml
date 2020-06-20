@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:dubbo="http://dubbo.apache.org/schema/dubbo"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.3.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://dubbo.apache.org/schema/dubbo http://dubbo.apache.org/schema/dubbo/dubbo.xsd">
+
+    <!-- 声明application -->
+    <dubbo:application name="ydm_consumer"></dubbo:application>
+    <!-- 注册服务 -->
+    <!-- 	<dubbo:registry address="zookeeper://127.0.0.1:2181"></dubbo:registry> -->
+
+    <dubbo:reference interface="com.ydm.tailbase.bankendprocess.BackendService"  id="backendService"  url=" dubbo://127.0.0.1:8003"  />
+</beans>

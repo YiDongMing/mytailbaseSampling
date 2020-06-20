@@ -22,12 +22,7 @@ public class BackendController {
     private static volatile Integer FINISH_PROCESS_COUNT = 0;
     // save 90 batch for wrong trace
     private static int BATCH_COUNT = 90;
-    private static List<TraceIdBatch> TRACEID_BATCH_LIST= new ArrayList<>();
-    public static  void init() {
-        for (int i = 0; i < BATCH_COUNT; i++) {
-            TRACEID_BATCH_LIST.add(new TraceIdBatch());
-        }
-    }
+
 
     @RequestMapping("setWrongTraceId")
     public String setWrongTraceId(@RequestParam String traceIdListJson, @RequestParam int batchPos){
@@ -35,7 +30,7 @@ public class BackendController {
         List<String> traceIdList = JSON.parseObject(traceIdListJson, new TypeReference<List<String>>() {
         });
         LOGGER.info(String.format("setWrongTraceId had called, batchPos:%d, traceIdList:%s", batchPos, traceIdListJson));
-        TraceIdBatch traceIdBatch = TRACEID_BATCH_LIST.get(pos);
+        TraceIdBatch traceIdBatch = BackendServiceImpl.TRACEID_BATCH_LIST.get(pos);
         if (traceIdBatch.getBatchPos() != 0 && traceIdBatch.getBatchPos() != batchPos) {
             LOGGER.warn("overwrite traceId batch when call setWrongTraceId");
         }
@@ -65,7 +60,7 @@ public class BackendController {
         }
         for (int i = 0; i < BATCH_COUNT; i++) {
 
-            TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
+            TraceIdBatch currentBatch = BackendServiceImpl.TRACEID_BATCH_LIST.get(i);
             if (currentBatch.getBatchPos() != 0) {
                 return false;
             }
@@ -83,14 +78,14 @@ public class BackendController {
             if (next >= BATCH_COUNT) {
                 next = 0;
             }
-            TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
-            TraceIdBatch nextBatch = TRACEID_BATCH_LIST.get(next);
+            TraceIdBatch currentBatch = BackendServiceImpl.TRACEID_BATCH_LIST.get(i);
+            TraceIdBatch nextBatch = BackendServiceImpl.TRACEID_BATCH_LIST.get(next);
             // when client process is finished, or then next trace batch is finished. to get checksum for wrong traces.
             if ((FINISH_PROCESS_COUNT >= Constants.PROCESS_COUNT && currentBatch.getBatchPos() > 0) ||
                     (nextBatch.getProcessCount() >= Constants.PROCESS_COUNT && currentBatch.getProcessCount() >= Constants.PROCESS_COUNT)) {
                 // reset
                 TraceIdBatch newTraceIdBatch = new TraceIdBatch();
-                TRACEID_BATCH_LIST.set(i, newTraceIdBatch);
+                BackendServiceImpl.TRACEID_BATCH_LIST.set(i, newTraceIdBatch);
                 return currentBatch;
             }
         }

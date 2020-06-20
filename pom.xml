@@ -16,7 +16,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
 
-        <spring-boot.version>2.0.6.RELEASE</spring-boot.version>
+        <spring-boot.version>2.0.1.RELEASE</spring-boot.version>
     </properties>
 
     <dependencyManagement>
@@ -39,12 +39,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-            <version>2.0.6.RELEASE</version>
+            <version>${spring-boot.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-tomcat</artifactId>
-            <version>2.0.6.RELEASE</version>
+            <version>${spring-boot.version}</version>
             <!--<scope>provided</scope>-->
         </dependency>
         <dependency>
@@ -63,6 +63,12 @@
             <artifactId>guava</artifactId>
             <version>20.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.alibaba.boot</groupId>
+            <artifactId>dubbo-spring-boot-starter</artifactId>
+            <version>0.2.0</version>
+        </dependency>
+
 
     </dependencies>
     <build>
@@ -70,7 +76,7 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>2.0.6.RELEASE</version>
+                <version>${spring-boot.version}</version>
                 <executions>
                     <execution>
                         <goals>

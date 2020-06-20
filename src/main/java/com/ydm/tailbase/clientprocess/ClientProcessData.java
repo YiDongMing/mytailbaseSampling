@@ -1,16 +1,20 @@
 package com.ydm.tailbase.clientprocess;
 
+import com.alibaba.dubbo.config.annotation.Reference;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.ydm.tailbase.CommonController;
 import com.ydm.tailbase.Constants;
 import com.ydm.tailbase.Util;
+import com.ydm.tailbase.bankendprocess.BackendService;
 import okhttp3.FormBody;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
 import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
@@ -28,6 +32,9 @@ public class ClientProcessData implements Runnable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientProcessData.class.getName());
 
+    ApplicationContext ctx = new ClassPathXmlApplicationContext("classpath:dubbo-consumer.xml");
+    BackendService backendService = ctx.getBean("backendService", BackendService.class);
+
     // an list of trace map,like ring buffe.  key is traceId, value is spans ,  r
     private static List<ConcurrentHashMap<String, List<String>>> BATCH_TRACE_LIST = new ArrayList<>();
     // make 50 bucket to cache traceData
@@ -35,7 +42,7 @@ public class ClientProcessData implements Runnable {
 
     private static int READ_POOL_SIZE = 2;
 
-    private static int READ_MAX_SIZE = 3;
+    private static int READ_MAX_SIZE = 4;
 
     public static int THREAD_COUNT = 4;
 
@@ -43,6 +50,7 @@ public class ClientProcessData implements Runnable {
         for (int i = 0; i < BATCH_COUNT; i++) {
             BATCH_TRACE_LIST.add(new ConcurrentHashMap<>(Constants.BATCH_SIZE));
         }
+
     }
 
     public static void start() {
@@ -63,12 +71,6 @@ public class ClientProcessData implements Runnable {
                 return;
             }
             URL url = new URL(path);
-            HttpURLConnection httpConnection = (HttpURLConnection) url.openConnection(Proxy.NO_PROXY);
-            int contentLength = httpConnection.getContentLength();
-            httpConnection.disconnect();
-            int blockSize = contentLength/THREAD_COUNT;
-            LOGGER.info("contentLengh:"+contentLength);
-            LOGGER.info("data path:" + path);
             HttpURLConnection httpURLConnection =(HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
             httpURLConnection.connect();
             InputStream input = httpURLConnection.getInputStream();
@@ -123,7 +125,6 @@ public class ClientProcessData implements Runnable {
                     }
                 }
             }
-            LOGGER.info("mylog to updateWrongTraceId, count:" + count);
             updateWrongTraceId(badTraceIdList, (int) (count / Constants.BATCH_SIZE - 1));
             bf.close();
             input.close();
@@ -139,9 +140,17 @@ public class ClientProcessData implements Runnable {
      * @param batchPos
      */
     private void updateWrongTraceId(Set<String> badTraceIdList, int batchPos) {
-        String json = JSON.toJSONString(badTraceIdList);
+
         if (badTraceIdList.size() > 0) {
+            String json = JSON.toJSONString(badTraceIdList);
             try {
+                backendService.setWrongTraceId(json,batchPos);
+            } catch (Exception e) {
+                LOGGER.info("update wrong trace fail！！！");
+                e.printStackTrace();
+            }
+            /*try {
+
                 LOGGER.info("updateBadTraceId, json:" + json + ", batch:" + batchPos);
                 RequestBody body = new FormBody.Builder()
                         .add("traceIdListJson", json).add("batchPos", batchPos + "").build();
@@ -150,7 +159,7 @@ public class ClientProcessData implements Runnable {
                 response.close();
             } catch (Exception e) {
                 LOGGER.warn("fail to updateBadTraceId, json:" + json + ", batch:" + batchPos);
-            }
+            }*/
         }
     }
 
@@ -166,8 +175,8 @@ public class ClientProcessData implements Runnable {
     }
 
     public static String getWrongTracing(String wrongTraceIdList, int batchPos) {
-        LOGGER.info(String.format("getWrongTracing, batchPos:%d, wrongTraceIdList:\n %s" ,
-                batchPos, wrongTraceIdList));
+        /*LOGGER.info(String.format("getWrongTracing, batchPos:%d, wrongTraceIdList:\n %s" ,
+                batchPos, wrongTraceIdList));*/
         List<String> traceIdList = JSON.parseObject(wrongTraceIdList, new TypeReference<List<String>>(){});
         Map<String,List<String>> wrongTraceMap = new HashMap<>();
         int pos = batchPos % BATCH_COUNT;
@@ -183,7 +192,7 @@ public class ClientProcessData implements Runnable {
         getWrongTraceWithBatch(pos, pos, traceIdList,  wrongTraceMap);
         getWrongTraceWithBatch(next, pos, traceIdList, wrongTraceMap);
         // to clear spans, don't block client process thread. TODO to use lock/notify
-        synchronized(BATCH_TRACE_LIST){
+        synchronized(BATCH_TRACE_LIST.get(previous)){
             BATCH_TRACE_LIST.get(previous).clear();
         }
         return JSON.toJSONString(wrongTraceMap);
@@ -203,9 +212,9 @@ public class ClientProcessData implements Runnable {
                     wrongTraceMap.put(traceId, spanList);
                 }
                 // output spanlist to check
-                String spanListString = spanList.stream().collect(Collectors.joining("\n"));
-                LOGGER.info(String.format("getWrongTracing, batchPos:%d, pos:%d, traceId:%s",
-                        batchPos, pos,  traceId));
+                //String spanListString = spanList.stream().collect(Collectors.joining("\n"));
+                /*LOGGER.info(String.format("getWrongTracing, batchPos:%d, pos:%d, traceId:%s",
+                        batchPos, pos,  traceId));*/
             }
         }
     }
@@ -228,7 +237,6 @@ public class ClientProcessData implements Runnable {
                 while (true) {
                     if (traceMap.size() == 0) {
                         updateWrongTraceId(badTraceIdList,batchPos);
-                        LOGGER.info("suc to updateBadTraceId, batchPos:" + batchPos+":::countNull");
                         badTraceIdList.clear();
                         break;
                     }
@@ -236,5 +244,13 @@ public class ClientProcessData implements Runnable {
             }
         };
         readFileThreadPool.execute(task);
+    }
+
+    public BackendService getBackendService() {
+        return backendService;
+    }
+
+    public void setBackendService(BackendService backendService) {
+        this.backendService = backendService;
     }
 }
