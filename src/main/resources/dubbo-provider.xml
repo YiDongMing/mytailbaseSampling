@@ -13,5 +13,6 @@
     <!-- service implementation, as same as regular local bean -->
     <bean id="backendService" class="com.ydm.tailbase.bankendprocess.BackendServiceImpl"/>
     <!-- declare the service interface to be exported -->
-    <dubbo:service interface="com.ydm.tailbase.bankendprocess.BackendService" ref="backendService" registry="N/A" timeout="30000"/>
+    <dubbo:provider retries="1" timeout="2000"  threads="2000" />
+    <dubbo:service interface="com.ydm.tailbase.bankendprocess.BackendService" ref="backendService" registry="N/A" timeout="2000" />
 </beans>
