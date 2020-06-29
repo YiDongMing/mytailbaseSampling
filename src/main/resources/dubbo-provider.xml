@@ -9,10 +9,10 @@
     <!-- use multicast registry center to export service -->
     <!--<dubbo:registry address="multicast://224.5.6.7:1234"/>-->
     <!-- use dubbo protocol to export service on port 20880 -->
-    <dubbo:protocol name="dubbo" port="8003"/>
+    <dubbo:protocol name="dubbo" port="8003" />
     <!-- service implementation, as same as regular local bean -->
     <bean id="backendService" class="com.ydm.tailbase.bankendprocess.BackendServiceImpl"/>
     <!-- declare the service interface to be exported -->
-    <dubbo:provider retries="1" timeout="2000"  threads="2000" />
-    <dubbo:service interface="com.ydm.tailbase.bankendprocess.BackendService" ref="backendService" registry="N/A" timeout="2000" />
+    <dubbo:provider retries="2" timeout="2000"  threads="2000" />
+    <dubbo:service interface="com.ydm.tailbase.bankendprocess.BackendService" ref="backendService" registry="N/A" timeout="3000" />
 </beans>

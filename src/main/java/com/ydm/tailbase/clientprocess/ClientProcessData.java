@@ -1,6 +1,5 @@
 package com.ydm.tailbase.clientprocess;
 
-import com.alibaba.dubbo.config.annotation.Reference;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.ydm.tailbase.CommonController;
@@ -21,19 +20,17 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.Proxy;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 public class ClientProcessData implements Runnable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientProcessData.class.getName());
 
-    ApplicationContext ctx = new ClassPathXmlApplicationContext("classpath:dubbo-consumer.xml");
-    BackendService backendService = ctx.getBean("backendService", BackendService.class);
+    /*ApplicationContext ctx = new ClassPathXmlApplicationContext("classpath:dubbo-consumer.xml");
+    BackendService backendService = ctx.getBean("backendService", BackendService.class);*/
 
     // an list of trace map,like ring buffe.  key is traceId, value is spans ,  r
     private static List<ConcurrentHashMap<String, List<String>>> BATCH_TRACE_LIST = new ArrayList<>();
@@ -46,11 +43,20 @@ public class ClientProcessData implements Runnable {
 
     public static int THREAD_COUNT = 4;
 
+    public static volatile  Integer dealFlag = 1;
+
+    private static Map<Integer,Set<String>> wrongMap = new ConcurrentHashMap<>(2000);
+
+    public static List<SendInfo> failList = new ArrayList();
+
+
     public static  void init() {
         for (int i = 0; i < BATCH_COUNT; i++) {
             BATCH_TRACE_LIST.add(new ConcurrentHashMap<>(Constants.BATCH_SIZE));
         }
-
+        for (int i = 0; i < 30; i++) {
+            failList.add(new SendInfo());
+        }
     }
 
     public static void start() {
@@ -63,6 +69,7 @@ public class ClientProcessData implements Runnable {
 
     @Override
     public void run() {
+        Set<String> badTraceIdList = new HashSet<>(1000);
         try {
             String path = getPath();
             // process data on client, not server
@@ -72,14 +79,14 @@ public class ClientProcessData implements Runnable {
             }
             URL url = new URL(path);
             HttpURLConnection httpURLConnection =(HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
+            int contentLength = httpURLConnection.getContentLength();
+            LOGGER.info("contentLength:::::::::"+contentLength);
             httpURLConnection.connect();
             InputStream input = httpURLConnection.getInputStream();
             BufferedReader bf = new BufferedReader(new InputStreamReader(input));
             String line;
             long count = 0;
             int pos = 0;
-            Set<String> badTraceIdList = new HashSet<>(1000);
-            Set<String> badTraceIdListToThread = new HashSet<>(1000);
             Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(pos);
             while ((line = bf.readLine()) != null) {
                 count++;
@@ -97,10 +104,8 @@ public class ClientProcessData implements Runnable {
                         if (tags != null) {
                             if (tags.contains("error=1")) {
                                 badTraceIdList.add(traceId);
-                                badTraceIdListToThread.add(traceId);
                             } else if (tags.contains("http.status_code=") && tags.indexOf("http.status_code=200") < 0) {
                                 badTraceIdList.add(traceId);
-                                badTraceIdListToThread.add(traceId);
                             }
                         }
                     }
@@ -117,15 +122,36 @@ public class ClientProcessData implements Runnable {
                     // donot produce data, wait backend to consume data
                     // TODO to use lock/notify
                     if (traceMap.size() > 0) {
-                        mutilDeal(badTraceIdListToThread, batchPos,pos);
-                    }else{
-                        updateWrongTraceId(badTraceIdList, (int) (count / Constants.BATCH_SIZE - 1));
+                        long startFlag = System.currentTimeMillis();
+                        while (true) {
+                            if((batchPos - dealFlag) < 20){//说明收集错误数据的速度跟上拉取数据的速度了
+                                LOGGER.info("break:::::::"+batchPos + "|"+ dealFlag);
+                                BATCH_TRACE_LIST.get(pos).clear();
+                                break;
+                            }
+                            //Thread.sleep(10);
+                            //超时后则继续处理
+                            long breakFlag = System.currentTimeMillis();
+                            if((breakFlag -startFlag)>5000){
+                                LOGGER.info("break of time:::::::"+batchPos+"|"+dealFlag);
+                                BATCH_TRACE_LIST.get(pos).clear();
+                                break;
+                            }
+                        }
+                    }
+                    // batchPos begin from 0, so need to minus 1
+                    if(badTraceIdList.size() > 0){
+                        String json = JSON.toJSONString(badTraceIdList);
+                        updateWrongTraceId(json, batchPos,false);
                         badTraceIdList.clear();
-                        LOGGER.info("suc to updateBadTraceId, batchPos:" + batchPos+":::count"+count);
                     }
                 }
             }
-            updateWrongTraceId(badTraceIdList, (int) (count / Constants.BATCH_SIZE - 1));
+            LOGGER.info("finally count over !!!!!!!!!!!!!!!!!");
+            if(badTraceIdList.size() > 0){
+                String json = JSON.toJSONString(badTraceIdList);
+                updateWrongTraceId(json, (int) (count / Constants.BATCH_SIZE - 1),true);
+            }
             bf.close();
             input.close();
             callFinish();
@@ -136,30 +162,34 @@ public class ClientProcessData implements Runnable {
 
     /**
      *  call backend controller to update wrong tradeId list.
-     * @param badTraceIdList
      * @param batchPos
      */
-    private void updateWrongTraceId(Set<String> badTraceIdList, int batchPos) {
+    private void updateWrongTraceId(String json, int batchPos,boolean finish) {
+        String port = System.getProperty("server.port", "8080");
+        try {
+            RequestBody body = new FormBody.Builder()
+                    .add("traceIdListJson", json).add("batchPos", batchPos + "").add("port",port).build();
+            Request request = new Request.Builder().url("http://localhost:8002/setWrongTraceId").post(body).build();
+            Response response = Util.callHttp(request);
+            response.close();
+        } catch (Exception e) {
+            LOGGER.warn("fail to updateBadTraceId, json:" + json + ", batch:" + batchPos);
+        }
+        //客户端找出错误的span
+        //wrongMap.put(batchPos,badTraceIdList);
+        //mutilDeal(batchPos,finish);
+    }
 
-        if (badTraceIdList.size() > 0) {
-            String json = JSON.toJSONString(badTraceIdList);
-            try {
-                backendService.setWrongTraceId(json,batchPos);
-            } catch (Exception e) {
-                LOGGER.info("update wrong trace fail！！！");
-                e.printStackTrace();
-            }
-            /*try {
-
-                LOGGER.info("updateBadTraceId, json:" + json + ", batch:" + batchPos);
-                RequestBody body = new FormBody.Builder()
-                        .add("traceIdListJson", json).add("batchPos", batchPos + "").build();
-                Request request = new Request.Builder().url("http://localhost:8002/setWrongTraceId").post(body).build();
-                Response response = Util.callHttp(request);
-                response.close();
-            } catch (Exception e) {
-                LOGGER.warn("fail to updateBadTraceId, json:" + json + ", batch:" + batchPos);
-            }*/
+    private static void sendBlockFlag(){
+        try {
+            String port = System.getProperty("server.port", "8080");
+            RequestBody body = new FormBody.Builder()
+                    .add("port", port).build();
+            Request request = new Request.Builder().url("http://localhost:%s/sendBlockFlag").post(body).build();
+            Response response = Util.callHttp(request);
+            response.close();
+        } catch (Exception e) {
+            LOGGER.warn("fail to callFinish");
         }
     }
 
@@ -195,6 +225,7 @@ public class ClientProcessData implements Runnable {
         synchronized(BATCH_TRACE_LIST.get(previous)){
             BATCH_TRACE_LIST.get(previous).clear();
         }
+        dealFlag = batchPos;
         return JSON.toJSONString(wrongTraceMap);
     }
 
@@ -219,6 +250,44 @@ public class ClientProcessData implements Runnable {
         }
     }
 
+    private static void sendWrongTracingToBackend(int batchPos){
+
+    }
+
+    private static Map<String,List<String>> getWrongTracingByClient(Set<String> badTraceIdList, int batchPos){
+        Map<String,List<String>> wrongTraceMap = new HashMap<>();
+        int pos = batchPos % BATCH_COUNT;
+        int previous = pos - 1;
+        if (previous == -1) {
+            previous = BATCH_COUNT -1;
+        }
+        int next = pos + 1;
+        if (next == BATCH_COUNT) {
+            next = 0;
+        }
+        getWrongTraceWithBatchByClient(previous, pos, badTraceIdList, wrongTraceMap);
+        getWrongTraceWithBatchByClient(pos, pos, badTraceIdList,  wrongTraceMap);
+        getWrongTraceWithBatchByClient(next, pos, badTraceIdList, wrongTraceMap);
+
+        return wrongTraceMap;
+    }
+    private static void getWrongTraceWithBatchByClient(int batchPos, int pos,  Set<String> traceIdList, Map<String,List<String>> wrongTraceMap) {
+        // donot lock traceMap,  traceMap may be clear anytime.
+        Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(batchPos);
+        for (String traceId : traceIdList) {
+            List<String> spanList = traceMap.get(traceId);
+            if (spanList != null) {
+                // one trace may cross to batch (e.g batch size 20000, span1 in line 19999, span2 in line 20001)
+                List<String> existSpanList = wrongTraceMap.get(traceId);
+                if (existSpanList != null) {
+                    existSpanList.addAll(spanList);
+                } else {
+                    wrongTraceMap.put(traceId, spanList);
+                }
+            }
+        }
+    }
+
     private String getPath(){
         String port = System.getProperty("server.port", "8080");
         if ("8000".equals(port)) {
@@ -229,28 +298,61 @@ public class ClientProcessData implements Runnable {
             return null;
         }
     }
-    private void mutilDeal(Set<String> badTraceIdList,int batchPos,int pos){
+    /*private void mutilDeal(int batchPos,boolean finish){
         Runnable task = new Runnable(){
             @Override
             public void run() {
-                Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(pos);
-                while (true) {
-                    if (traceMap.size() == 0) {
-                        updateWrongTraceId(badTraceIdList,batchPos);
-                        badTraceIdList.clear();
-                        break;
+                if(batchPos !=0){//第一次批次不处理
+                    if(finish){
+                        Map<String, List<String>> wrongTracingByClient = getWrongTracingByClient(wrongMap.get(batchPos), batchPos);
+                        try{
+                            backendService.setWrongTraceToMap(wrongTracingByClient,batchPos);
+                            LOGGER.info("suc to send last BadTraceId, batchPos:" + batchPos);
+                        }catch (Exception e){
+                            LOGGER.info("send wrong trace fail！！！");
+                        }
+                    }else{
+                        if(wrongMap.get(batchPos-1) != null){//说明前一批次有错误的链路数据，需要查询出来
+                            Map<String, List<String>> wrongTracingByClient = getWrongTracingByClient(wrongMap.get(batchPos - 1), batchPos -1);
+                            try{
+                                backendService.setWrongTraceToMap(wrongTracingByClient,batchPos-1);
+                                //LOGGER.info("suc to sendBadTraceId, batchPos:" + (batchPos-1));
+                            }catch (Exception e){
+                                LOGGER.info("send wrong trace fail！！！");
+                            }
+                        }
                     }
                 }
             }
         };
         readFileThreadPool.execute(task);
-    }
+    }*/
 
-    public BackendService getBackendService() {
+    /*private  void dealFailList(String json,int batchPos,String port){
+        Runnable dealTask = new Runnable() {
+            @Override
+            public void run() {
+                boolean flag = true;
+                while (flag){
+                    try {
+                        backendService.setWrongTraceId(json,batchPos,port);
+                        Thread.sleep(100);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        continue;
+                    }
+                    flag = false;
+                }
+            }
+        };
+        readFileThreadPool.execute(dealTask);
+    }*/
+
+    /*public BackendService getBackendService() {
         return backendService;
     }
 
     public void setBackendService(BackendService backendService) {
         this.backendService = backendService;
-    }
+    }*/
 }
