@@ -100,9 +100,6 @@ public class ClientProcessData implements Runnable {
                         spanList = new ArrayList<>();
                         traceMap.put(traceId, spanList);
                     }
-                    if("31c03d4774053b5f".equals(traceId) || "6446038004232f58".equals(traceId) || "4afbb32814c9502c".equals(traceId)){
-                        LOGGER.info("contentLength"+traceId+"|"+batchPos);
-                    }
                     spanList.add(line);
                     if (cols.length > 8) {
                         String tags = cols[8];
@@ -229,9 +226,6 @@ public class ClientProcessData implements Runnable {
         // donot lock traceMap,  traceMap may be clear anytime.
         Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(batchPos);
         for (String traceId : traceIdList) {
-            if("31c03d4774053b5f".equals(traceId) || "6446038004232f58".equals(traceId) || "4afbb32814c9502c".equals(traceId)){
-                LOGGER.info("getWrongTraceWithBatch"+traceId+"|"+batchPos);
-            }
             List<String> spanList = traceMap.get(traceId);
             if (spanList != null) {
                 // one trace may cross to batch (e.g batch size 20000, span1 in line 19999, span2 in line 20001)
