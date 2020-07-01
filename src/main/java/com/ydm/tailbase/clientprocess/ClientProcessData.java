@@ -208,17 +208,19 @@ public class ClientProcessData implements Runnable {
         List<String> traceIdList = JSON.parseObject(wrongTraceIdList, new TypeReference<List<String>>(){});
         Map<String,List<String>> wrongTraceMap = new HashMap<>();
         int previous = batchPos - 1;
-        if(previous <= 0){
-            previous = 0;
+        if(previous >= 0){
+            getWrongTraceWithBatch(previous, batchPos, traceIdList, wrongTraceMap);
         }
-        getWrongTraceWithBatch(previous, batchPos, traceIdList, wrongTraceMap);
         int next = batchPos + 1;
         getWrongTraceWithBatch(batchPos, batchPos, traceIdList,  wrongTraceMap);
         getWrongTraceWithBatch(next, batchPos, traceIdList, wrongTraceMap);
         // to clear spans, don't block client process thread. TODO to use lock/notify
-        synchronized(BATCH_TRACE_LIST.get(previous)){
-            BATCH_TRACE_LIST.get(previous).clear();
+        if(previous >= 0){
+            synchronized(BATCH_TRACE_LIST.get(previous)){
+                BATCH_TRACE_LIST.get(previous).clear();
+            }
         }
+
         dealFlag = batchPos;
         return JSON.toJSONString(wrongTraceMap);
     }

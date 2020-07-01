@@ -38,7 +38,6 @@ public class BackendController {
     public void setWrongTraceId(@RequestParam String traceIdListJson, @RequestParam int batchPos, @RequestParam String port){
         List<String> traceIdList = JSON.parseObject(traceIdListJson, new TypeReference<List<String>>() {
         });
-        LOGGER.info("setWrongTraceId"+traceIdList,+batchPos);
         TraceIdBatch traceIdBatch = TRACEID_BATCH_LIST.get(batchPos);
         if (traceIdList != null && traceIdList.size() > 0) {
             traceIdBatch.setBatchPos(batchPos);
@@ -114,7 +113,7 @@ public class BackendController {
                     TraceIdBatch newTraceIdBatch = new TraceIdBatch();
                     BackendController.TRACEID_BATCH_LIST.set(i, newTraceIdBatch);
                     startFlag = i + 1;
-                    LOGGER.info("get currentBatch ::"+currentBatch.toString()+"|"+startFlag);
+                    //LOGGER.info("get currentBatch ::"+currentBatch.toString()+"|"+startFlag);
                     return currentBatch;
                 }
             }

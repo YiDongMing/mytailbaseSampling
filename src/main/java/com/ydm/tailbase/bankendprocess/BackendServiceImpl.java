@@ -78,7 +78,7 @@ public class BackendServiceImpl implements BackendService{
         for (int i = startFlag; i < BATCH_COUNT; i++) {
             TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
             // when client process is finished, or then next trace batch is finished. to get checksum for wrong traces.
-            if (currentBatch.getBatchPos() > 0 && BackendServiceImpl.dealBatchPos1-1>i && BackendServiceImpl.dealBatchPos2-1 >i) {
+            if (currentBatch.getBatchPos() > 0 && BackendServiceImpl.dealBatchPos1-5>i && BackendServiceImpl.dealBatchPos2-5 >i) {
                 // reset
                 TraceIdBatch newTraceIdBatch = new TraceIdBatch();
                 BackendServiceImpl.TRACEID_BATCH_LIST.set(i, newTraceIdBatch);
