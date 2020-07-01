@@ -47,7 +47,7 @@ public class BackendServiceImpl implements BackendService{
 
     @Override
     public void setWrongTraceToMap(Map<String, List<String>> processMap,int batchPos) {
-        for (Map.Entry<String, List<String>> entry : processMap.entrySet()) {
+        /*for (Map.Entry<String, List<String>> entry : processMap.entrySet()) {
             String traceId = entry.getKey();
             Set<String> spanSet = CheckSumService.TRACE_CHUKSUM_MAP_TMP.get(traceId);
             if (spanSet == null) {
@@ -55,7 +55,7 @@ public class BackendServiceImpl implements BackendService{
                 CheckSumService.TRACE_CHUKSUM_MAP_TMP.put(traceId, spanSet);
             }
             spanSet.addAll(entry.getValue());
-        }
+        }*/
     }
     /**
      * get finished bath when current and next batch has all finished

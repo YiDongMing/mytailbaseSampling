@@ -21,7 +21,7 @@ public class BackendController {
     // FINISH_PROCESS_COUNT will add one, when process call finish();
     public static volatile Integer FINISH_PROCESS_COUNT = 0;
     // save 90 batch for wrong trace
-    private static int BATCH_COUNT = 2000;
+    private static int BATCH_COUNT = 1500;
     public static volatile Integer dealBatchPos1 = 0;
     public static volatile Integer dealBatchPos2 = 0;
     public static List<TraceIdBatch> TRACEID_BATCH_LIST= new ArrayList<>();
@@ -44,13 +44,6 @@ public class BackendController {
             traceIdBatch.setProcessCount(traceIdBatch.getProcessCount() + 1);
             traceIdBatch.getTraceIdList().addAll(traceIdList);
         }
-        if("8000".equals(port)){
-            dealBatchPos1 = batchPos;
-            traceIdBatch.setPort("8001");
-        }else{
-            dealBatchPos2 = batchPos;
-            traceIdBatch.setPort("8000");
-        }
     }
 
     @RequestMapping("/finish")
@@ -69,15 +62,23 @@ public class BackendController {
             return false;
         }
         if(finishFlag > 200){
+            LOGGER.info("send result by finishFlag");
             return true;
+        }
+        finishFlag++;
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
         for (int i = 0; i < BATCH_COUNT; i++) {
 
             TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
-            if (currentBatch.getBatchPos() != 0) {
+            if (currentBatch.getBatchPos() > 0) {
                 return false;
             }
         }
+        LOGGER.info("send result on right way");
         return true;
     }
 
@@ -87,7 +88,7 @@ public class BackendController {
      */
     public static TraceIdBatch getFinishedBatch() {
         if(BackendController.FINISH_PROCESS_COUNT >= Constants.PROCESS_COUNT){
-            for (int i = startFlag; i < BATCH_COUNT; i++) {
+            for (int i = 0; i < BATCH_COUNT; i++) {
                 TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
                 // when client process is finished, or then next trace batch is finished. to get checksum for wrong traces.
                 if (currentBatch.getBatchPos() > 0) {
@@ -98,16 +99,28 @@ public class BackendController {
                     return currentBatch;
                 }
             }
-        }
-        for (int i = startFlag; i < BATCH_COUNT; i++) {
-            TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
-            // when client process is finished, or then next trace batch is finished. to get checksum for wrong traces.
-            if (currentBatch.getBatchPos() > 0 && dealBatchPos1-1>i && dealBatchPos2-1 >i) {
-                // reset
-                TraceIdBatch newTraceIdBatch = new TraceIdBatch();
-                BackendController.TRACEID_BATCH_LIST.set(i, newTraceIdBatch);
-                startFlag = i;
-                return currentBatch;
+        }else{
+            for (int i = startFlag; i < BATCH_COUNT; i++) {
+                if(i==0){
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
+                // when client process is finished, or then next trace batch is finished. to get checksum for wrong traces.
+                if (currentBatch.getBatchPos() >= 0 && dealBatchPos1-1 > i && dealBatchPos2-1 > i) {
+                    // reset
+                    if(0==i){
+                        LOGGER.info("getFinishedBatch"+dealBatchPos1+"|"+dealBatchPos2);
+                    }
+                    TraceIdBatch newTraceIdBatch = new TraceIdBatch();
+                    BackendController.TRACEID_BATCH_LIST.set(i, newTraceIdBatch);
+                    startFlag = i + 1;
+                    //LOGGER.info("get currentBatch ::"+currentBatch.toString()+"|"+startFlag);
+                    return currentBatch;
+                }
             }
         }
         return null;

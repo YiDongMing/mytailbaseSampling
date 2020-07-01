@@ -35,7 +35,9 @@ public class ClientProcessData implements Runnable {
     // an list of trace map,like ring buffe.  key is traceId, value is spans ,  r
     private static List<ConcurrentHashMap<String, List<String>>> BATCH_TRACE_LIST = new ArrayList<>();
     // make 50 bucket to cache traceData
-    private static int BATCH_COUNT = 50;
+    private static int BATCH_COUNT = 1500;
+
+    private static int STOP_COUNT = 300;
 
     private static int READ_POOL_SIZE = 2;
 
@@ -86,8 +88,8 @@ public class ClientProcessData implements Runnable {
             BufferedReader bf = new BufferedReader(new InputStreamReader(input));
             String line;
             long count = 0;
-            int pos = 0;
-            Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(pos);
+            int batchPos = 0;
+            ConcurrentHashMap<String, List<String>> traceMap = BATCH_TRACE_LIST.get(batchPos);
             while ((line = bf.readLine()) != null) {
                 count++;
                 String[] cols = line.split("\\|");
@@ -97,6 +99,9 @@ public class ClientProcessData implements Runnable {
                     if (spanList == null) {
                         spanList = new ArrayList<>();
                         traceMap.put(traceId, spanList);
+                    }
+                    if("31c03d4774053b5f".equals(traceId) || "6446038004232f58".equals(traceId) || "4afbb32814c9502c".equals(traceId)){
+                        LOGGER.info("contentLength"+traceId+"|"+batchPos);
                     }
                     spanList.add(line);
                     if (cols.length > 8) {
@@ -111,32 +116,25 @@ public class ClientProcessData implements Runnable {
                     }
                 }
                 if (count % Constants.BATCH_SIZE == 0) {
-                    pos++;
-                    // loop cycle
-                    if (pos >= BATCH_COUNT) {
-                        pos = 0;
-                    }
-                    traceMap = BATCH_TRACE_LIST.get(pos);
+                    batchPos = (int) count / Constants.BATCH_SIZE - 1;
+                    traceMap = BATCH_TRACE_LIST.get(batchPos+1);
                     // batchPos begin from 0, so need to minus 1
-                    int batchPos = (int) count / Constants.BATCH_SIZE - 1;
                     // donot produce data, wait backend to consume data
                     // TODO to use lock/notify
-                    if (traceMap.size() > 0) {
-                        long startFlag = System.currentTimeMillis();
-                        while (true) {
-                            if((batchPos - dealFlag) < 20){//说明收集错误数据的速度跟上拉取数据的速度了
-                                LOGGER.info("break:::::::"+batchPos + "|"+ dealFlag);
-                                BATCH_TRACE_LIST.get(pos).clear();
-                                break;
-                            }
-                            //Thread.sleep(10);
-                            //超时后则继续处理
-                            long breakFlag = System.currentTimeMillis();
-                            if((breakFlag -startFlag)>5000){
-                                LOGGER.info("break of time:::::::"+batchPos+"|"+dealFlag);
-                                BATCH_TRACE_LIST.get(pos).clear();
-                                break;
-                            }
+                    long startFlag = System.currentTimeMillis();
+                    while (true) {
+                        if((batchPos - dealFlag) < STOP_COUNT){//说明收集错误数据的速度跟上拉取数据的速度了
+                            //LOGGER.info("break:::::::"+batchPos + "|"+ dealFlag);
+                            //BATCH_TRACE_LIST.get(pos).clear();
+                            break;
+                        }
+                        //Thread.sleep(10);
+                        //超时后则继续处理
+                        long breakFlag = System.currentTimeMillis();
+                        if((breakFlag -startFlag)>10000){
+                            LOGGER.info("break of time:::::::"+batchPos+"|"+dealFlag);
+                            //BATCH_TRACE_LIST.get(pos).clear();
+                            break;
                         }
                     }
                     // batchPos begin from 0, so need to minus 1
@@ -150,7 +148,7 @@ public class ClientProcessData implements Runnable {
             LOGGER.info("finally count over !!!!!!!!!!!!!!!!!");
             if(badTraceIdList.size() > 0){
                 String json = JSON.toJSONString(badTraceIdList);
-                updateWrongTraceId(json, (int) (count / Constants.BATCH_SIZE - 1),true);
+                updateWrongTraceId(json, (int) (count / Constants.BATCH_SIZE),true);
             }
             bf.close();
             input.close();
@@ -209,18 +207,14 @@ public class ClientProcessData implements Runnable {
                 batchPos, wrongTraceIdList));*/
         List<String> traceIdList = JSON.parseObject(wrongTraceIdList, new TypeReference<List<String>>(){});
         Map<String,List<String>> wrongTraceMap = new HashMap<>();
-        int pos = batchPos % BATCH_COUNT;
-        int previous = pos - 1;
-        if (previous == -1) {
-            previous = BATCH_COUNT -1;
+        int previous = batchPos - 1;
+        if(previous <= 0){
+            previous = 0;
         }
-        int next = pos + 1;
-        if (next == BATCH_COUNT) {
-            next = 0;
-        }
-        getWrongTraceWithBatch(previous, pos, traceIdList, wrongTraceMap);
-        getWrongTraceWithBatch(pos, pos, traceIdList,  wrongTraceMap);
-        getWrongTraceWithBatch(next, pos, traceIdList, wrongTraceMap);
+        getWrongTraceWithBatch(previous, batchPos, traceIdList, wrongTraceMap);
+        int next = batchPos + 1;
+        getWrongTraceWithBatch(batchPos, batchPos, traceIdList,  wrongTraceMap);
+        getWrongTraceWithBatch(next, batchPos, traceIdList, wrongTraceMap);
         // to clear spans, don't block client process thread. TODO to use lock/notify
         synchronized(BATCH_TRACE_LIST.get(previous)){
             BATCH_TRACE_LIST.get(previous).clear();
@@ -233,6 +227,9 @@ public class ClientProcessData implements Runnable {
         // donot lock traceMap,  traceMap may be clear anytime.
         Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(batchPos);
         for (String traceId : traceIdList) {
+            if("31c03d4774053b5f".equals(traceId) || "6446038004232f58".equals(traceId) || "4afbb32814c9502c".equals(traceId)){
+                LOGGER.info("getWrongTraceWithBatch"+traceId+"|"+batchPos);
+            }
             List<String> spanList = traceMap.get(traceId);
             if (spanList != null) {
                 // one trace may cross to batch (e.g batch size 20000, span1 in line 19999, span2 in line 20001)

@@ -69,28 +69,26 @@ public class CheckSumService {
                         }
                         Map<String, Set<String>> map = new HashMap<>();
                         long start = System.currentTimeMillis();
-                        if (traceIdBatch.getTraceIdList().size() > 0) {
-                            int batchPos = traceIdBatch.getBatchPos();
-                            // to get all spans from remote
-                            for (String port : ports) {
-                                Map<String, List<String>> processMap =
-                                        getWrongTrace(JSON.toJSONString(traceIdBatch.getTraceIdList()), port, batchPos);
-                                if (processMap != null) {
-                                    for (Map.Entry<String, List<String>> entry : processMap.entrySet()) {
-                                        String traceId = entry.getKey();
-                                        Set<String> spanSet = map.get(traceId);
-                                        if (spanSet == null) {
-                                            spanSet = new HashSet<>();
-                                            map.put(traceId, spanSet);
-                                        }
-                                        spanSet.addAll(entry.getValue());
+                        int batchPos = traceIdBatch.getBatchPos();
+                        // to get all spans from remote
+                        for (String port : ports) {
+                            Map<String, List<String>> processMap =
+                                    getWrongTrace(JSON.toJSONString(traceIdBatch.getTraceIdList()), port, batchPos);
+                            if (processMap != null) {
+                                for (Map.Entry<String, List<String>> entry : processMap.entrySet()) {
+                                    String traceId = entry.getKey();
+                                    Set<String> spanSet = map.get(traceId);
+                                    if (spanSet == null) {
+                                        spanSet = new HashSet<>();
+                                        map.put(traceId, spanSet);
                                     }
-                                }else{
-                                    LOGGER.info("get traceIdBatch fail："+JSON.toJSONString(traceIdBatch.getTraceIdList()));
+                                    spanSet.addAll(entry.getValue());
                                 }
+                            }else{
+                                LOGGER.info("get traceIdBatch fail："+JSON.toJSONString(traceIdBatch.getTraceIdList()));
                             }
-                            dealBatch = batchPos;
                         }
+                        dealBatch = batchPos;
                         for (Map.Entry<String, Set<String>> entry : map.entrySet()) {
                             String traceId = entry.getKey();
                             Set<String> spanSet = entry.getValue();
