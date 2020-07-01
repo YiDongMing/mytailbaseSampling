@@ -38,11 +38,17 @@ public class BackendController {
     public void setWrongTraceId(@RequestParam String traceIdListJson, @RequestParam int batchPos, @RequestParam String port){
         List<String> traceIdList = JSON.parseObject(traceIdListJson, new TypeReference<List<String>>() {
         });
+        LOGGER.info("setWrongTraceId"+traceIdList,+batchPos);
         TraceIdBatch traceIdBatch = TRACEID_BATCH_LIST.get(batchPos);
         if (traceIdList != null && traceIdList.size() > 0) {
             traceIdBatch.setBatchPos(batchPos);
             traceIdBatch.setProcessCount(traceIdBatch.getProcessCount() + 1);
             traceIdBatch.getTraceIdList().addAll(traceIdList);
+        }
+        if("8000".equals(port)){
+            dealBatchPos1 = batchPos;
+        }else{
+            dealBatchPos2 = batchPos;
         }
     }
 
@@ -101,24 +107,14 @@ public class BackendController {
             }
         }else{
             for (int i = startFlag; i < BATCH_COUNT; i++) {
-                if(i==0){
-                    try {
-                        Thread.sleep(5000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
                 TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
                 // when client process is finished, or then next trace batch is finished. to get checksum for wrong traces.
                 if (currentBatch.getBatchPos() >= 0 && dealBatchPos1-1 > i && dealBatchPos2-1 > i) {
                     // reset
-                    if(0==i){
-                        LOGGER.info("getFinishedBatch"+dealBatchPos1+"|"+dealBatchPos2);
-                    }
                     TraceIdBatch newTraceIdBatch = new TraceIdBatch();
                     BackendController.TRACEID_BATCH_LIST.set(i, newTraceIdBatch);
                     startFlag = i + 1;
-                    //LOGGER.info("get currentBatch ::"+currentBatch.toString()+"|"+startFlag);
+                    LOGGER.info("get currentBatch ::"+currentBatch.toString()+"|"+startFlag);
                     return currentBatch;
                 }
             }
