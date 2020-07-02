@@ -39,26 +39,24 @@ public class ClientProcessData implements Runnable {
 
     private static int STOP_COUNT = 300;
 
-    private static int READ_POOL_SIZE = 2;
+    private static int READ_POOL_SIZE = 1;
 
-    private static int READ_MAX_SIZE = 4;
+    private static int READ_MAX_SIZE = 1;
 
     public static int THREAD_COUNT = 4;
 
     public static volatile  Integer dealFlag = 1;
 
-    private static Map<Integer,Set<String>> wrongMap = new ConcurrentHashMap<>(2000);
-
-    public static List<SendInfo> failList = new ArrayList();
+    //private static Map<Integer,Integer> wrongMap = new ConcurrentHashMap<>(2000);
 
 
     public static  void init() {
         for (int i = 0; i < BATCH_COUNT; i++) {
             BATCH_TRACE_LIST.add(new ConcurrentHashMap<>(Constants.BATCH_SIZE));
         }
-        for (int i = 0; i < 30; i++) {
-            failList.add(new SendInfo());
-        }
+        /*for (int i = 0; i < 2000; i++) {
+            wrongMap.put(i,0);
+        }*/
     }
 
     public static void start() {
@@ -119,25 +117,28 @@ public class ClientProcessData implements Runnable {
                     // donot produce data, wait backend to consume data
                     // TODO to use lock/notify
                     long startFlag = System.currentTimeMillis();
-                    while (true) {
-                        if((batchPos - dealFlag) < STOP_COUNT){//说明收集错误数据的速度跟上拉取数据的速度了
-                            //LOGGER.info("break:::::::"+batchPos + "|"+ dealFlag);
-                            //BATCH_TRACE_LIST.get(pos).clear();
-                            break;
-                        }
-                        //Thread.sleep(10);
-                        //超时后则继续处理
-                        long breakFlag = System.currentTimeMillis();
-                        if((breakFlag -startFlag)>10000){
-                            LOGGER.info("break of time:::::::"+batchPos+"|"+dealFlag);
-                            //BATCH_TRACE_LIST.get(pos).clear();
-                            break;
+                    LOGGER.info("doing "+batchPos);
+                    if((batchPos - dealFlag) > STOP_COUNT){
+                        while(true){
+                            if((batchPos - dealFlag) < STOP_COUNT){//说明收集错误数据的速度跟上拉取数据的速度了
+                                LOGGER.info("break:::::::"+batchPos + "|"+ dealFlag);
+                                //BATCH_TRACE_LIST.get(pos).clear();
+                                break;
+                            }
+                            //Thread.sleep(10);
+                            //超时后则继续处理
+                            long breakFlag = System.currentTimeMillis();
+                            if((breakFlag -startFlag)>3000){
+                                LOGGER.info("break of time:::::::"+batchPos+"|"+dealFlag);
+                                //BATCH_TRACE_LIST.get(pos).clear();
+                                break;
+                            }
                         }
                     }
                     // batchPos begin from 0, so need to minus 1
                     if(badTraceIdList.size() > 0){
                         String json = JSON.toJSONString(badTraceIdList);
-                        updateWrongTraceId(json, batchPos,false);
+                        mutilDeal(json, batchPos,false);
                         badTraceIdList.clear();
                     }
                 }
@@ -145,7 +146,7 @@ public class ClientProcessData implements Runnable {
             LOGGER.info("finally count over !!!!!!!!!!!!!!!!!");
             if(badTraceIdList.size() > 0){
                 String json = JSON.toJSONString(badTraceIdList);
-                updateWrongTraceId(json, (int) (count / Constants.BATCH_SIZE),true);
+                mutilDeal(json, (int) (count / Constants.BATCH_SIZE),true);
             }
             bf.close();
             input.close();
@@ -225,6 +226,7 @@ public class ClientProcessData implements Runnable {
     private static void getWrongTraceWithBatch(int batchPos, int pos,  List<String> traceIdList, Map<String,List<String>> wrongTraceMap) {
         // donot lock traceMap,  traceMap may be clear anytime.
         Map<String, List<String>> traceMap = BATCH_TRACE_LIST.get(batchPos);
+        //wrongMap.put(batchPos,wrongMap.get(batchPos) + 1);
         for (String traceId : traceIdList) {
             List<String> spanList = traceMap.get(traceId);
             if (spanList != null) {
@@ -291,35 +293,24 @@ public class ClientProcessData implements Runnable {
             return null;
         }
     }
-    /*private void mutilDeal(int batchPos,boolean finish){
+    private void mutilDeal(String json, int batchPos,boolean flag){
         Runnable task = new Runnable(){
             @Override
             public void run() {
-                if(batchPos !=0){//第一次批次不处理
-                    if(finish){
-                        Map<String, List<String>> wrongTracingByClient = getWrongTracingByClient(wrongMap.get(batchPos), batchPos);
-                        try{
-                            backendService.setWrongTraceToMap(wrongTracingByClient,batchPos);
-                            LOGGER.info("suc to send last BadTraceId, batchPos:" + batchPos);
-                        }catch (Exception e){
-                            LOGGER.info("send wrong trace fail！！！");
-                        }
-                    }else{
-                        if(wrongMap.get(batchPos-1) != null){//说明前一批次有错误的链路数据，需要查询出来
-                            Map<String, List<String>> wrongTracingByClient = getWrongTracingByClient(wrongMap.get(batchPos - 1), batchPos -1);
-                            try{
-                                backendService.setWrongTraceToMap(wrongTracingByClient,batchPos-1);
-                                //LOGGER.info("suc to sendBadTraceId, batchPos:" + (batchPos-1));
-                            }catch (Exception e){
-                                LOGGER.info("send wrong trace fail！！！");
-                            }
-                        }
-                    }
+                String port = System.getProperty("server.port", "8080");
+                try {
+                    RequestBody body = new FormBody.Builder()
+                            .add("traceIdListJson", json).add("batchPos", batchPos + "").add("port",port).build();
+                    Request request = new Request.Builder().url("http://localhost:8002/setWrongTraceId").post(body).build();
+                    Response response = Util.callHttp(request);
+                    response.close();
+                } catch (Exception e) {
+                    LOGGER.warn("fail to updateBadTraceId, json:" + json + ", batch:" + batchPos);
                 }
             }
         };
         readFileThreadPool.execute(task);
-    }*/
+    }
 
     /*private  void dealFailList(String json,int batchPos,String port){
         Runnable dealTask = new Runnable() {

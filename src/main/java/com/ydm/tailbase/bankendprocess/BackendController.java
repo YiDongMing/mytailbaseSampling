@@ -66,16 +66,6 @@ public class BackendController {
         if (FINISH_PROCESS_COUNT < Constants.PROCESS_COUNT) {
             return false;
         }
-        if(finishFlag > 200){
-            LOGGER.info("send result by finishFlag");
-            return true;
-        }
-        finishFlag++;
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
         for (int i = 0; i < BATCH_COUNT; i++) {
 
             TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(i);
@@ -122,14 +112,7 @@ public class BackendController {
 
     }
 
-    @RequestMapping("/sendBlockFlag")
-    public void sendBlockFlag( @RequestParam String  port){
-        if("8000".equals(port)){
-            CheckSumService.client1block = 1;
-        }else{
-            CheckSumService.client2block = 1;
-        }
-    }
+
 
 
 }
