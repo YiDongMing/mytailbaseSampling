@@ -29,12 +29,14 @@ public class CheckSumService {
 
 
     private static ExecutorService checkThreadPool = new ThreadPoolExecutor(2,3,60, TimeUnit.SECONDS,new LinkedBlockingQueue());
+    private static ExecutorService MD5ThreadPool = new ThreadPoolExecutor(1,1,60, TimeUnit.SECONDS,new LinkedBlockingQueue());
 
     private static long  countTime = 0l;
     private static long  countTime2 = 0l;
     public static volatile int client1block = 0;
     public static volatile int client2block = 0;
     public static volatile int dealBatch = 0;
+    public static volatile int MD5Batch = 0;
     public void start() {
         run();
     }
@@ -61,9 +63,16 @@ public class CheckSumService {
                             if (BackendController.isFinished()) {
                                 LOGGER.info("countTime:::::::::::"+countTime);
                                 LOGGER.info("countTime2:::::::::::"+countTime2);
-                                if (sendCheckSum()) {
-                                    break;
+                                MD5ThreadPool.shutdown();
+                                while (true){
+                                    LOGGER.info("MD5ThreadPool not finish:::::::::::");
+                                    if(MD5ThreadPool.isTerminated()){
+                                        if (sendCheckSum()) {
+                                            break;
+                                        }
+                                    }
                                 }
+                                break;
                             }
                             continue;
                         }
@@ -89,19 +98,7 @@ public class CheckSumService {
                             }
                         }
                         dealBatch = batchPos;
-                        for (Map.Entry<String, Set<String>> entry : map.entrySet()) {
-                            String traceId = entry.getKey();
-                            Set<String> spanSet = entry.getValue();
-                            // order span with startTime
-                            String spans = spanSet.stream().sorted(
-                                    Comparator.comparing(CheckSumService::getStartTime)).collect(Collectors.joining("\n"));
-                            spans = spans + "\n";
-                            // output all span to check
-                            // LOGGER.info("traceId:" + traceId + ",value:\n" + spans);
-                            TRACE_CHUCKSUM_MAP.put(traceId, Util.MD5(spans));
-                        }
-
-
+                        dealMD5(map);
                         long end = System.currentTimeMillis();
                         countTime = countTime + (end - start);
                     } catch (Exception e) {
@@ -124,35 +121,26 @@ public class CheckSumService {
             }
         };
         checkThreadPool.execute(task);
-        Runnable sendDealFlagTask = new Runnable() {
+    }
+
+    public static void dealMD5(Map<String, Set<String>> map){
+        Runnable MD5Task = new Runnable() {
             @Override
             public void run() {
-                while (true){
-                    try {
-                        if(client1block == 1){//说明客户端1已经阻塞，需要等待客户端2消费
-                            if((BackendServiceImpl.dealBatchPos1 - dealBatch) < 30){
-                                sendDealFlag("8000");
-                                client1block = 0;
-                            }
-                            Thread.sleep(10);
-                        }
-                        if(client2block == 1){
-                            if((BackendServiceImpl.dealBatchPos2 - dealBatch) < 30){
-                                sendDealFlag("8001");
-                                client2block = 0;
-                            }
-                            Thread.sleep(10);
-                        }
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-
+                for (Map.Entry<String, Set<String>> entry : map.entrySet()) {
+                    String traceId = entry.getKey();
+                    Set<String> spanSet = entry.getValue();
+                    // order span with startTime
+                    String spans = spanSet.stream().sorted(
+                            Comparator.comparing(CheckSumService::getStartTime)).collect(Collectors.joining("\n"));
+                    spans = spans + "\n";
+                    // output all span to check
+                    // LOGGER.info("traceId:" + traceId + ",value:\n" + spans);
+                    TRACE_CHUCKSUM_MAP.put(traceId, Util.MD5(spans));
                 }
-
             }
         };
-        //checkThreadPool.execute(sendDealFlagTask);
+        MD5ThreadPool.execute(MD5Task);
     }
 
     public void sendDealFlag(String port){
