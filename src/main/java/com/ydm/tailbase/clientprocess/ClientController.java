@@ -20,7 +20,7 @@ public class ClientController {
     @RequestMapping("/sendDealFlag")
     public void sendDealFlag( @RequestParam Integer dealFlag) {
         ClientProcessData.dealFlag = 0;
-        LOGGER.info("suc to receive DealFlag, batchPos:" + dealFlag);
+        //LOGGER.info("suc to receive DealFlag, batchPos:" + dealFlag);
     }
 
 }

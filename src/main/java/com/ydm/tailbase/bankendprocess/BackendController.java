@@ -73,7 +73,7 @@ public class BackendController {
                 return false;
             }
         }
-        LOGGER.info("send result on right way");
+        //LOGGER.info("send result on right way");
         return true;
     }
 

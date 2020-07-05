@@ -61,11 +61,11 @@ public class CheckSumService {
                         if (traceIdBatch == null) {
                             // send checksum when client process has all finished.
                             if (BackendController.isFinished()) {
-                                LOGGER.info("countTime:::::::::::"+countTime);
-                                LOGGER.info("countTime2:::::::::::"+countTime2);
+                                //LOGGER.info("countTime:::::::::::"+countTime);
+                                //LOGGER.info("countTime2:::::::::::"+countTime2);
                                 MD5ThreadPool.shutdown();
                                 while (true){
-                                    LOGGER.info("MD5ThreadPool not finish:::::::::::");
+                                    //LOGGER.info("MD5ThreadPool not finish:::::::::::");
                                     if(MD5ThreadPool.isTerminated()){
                                         if (sendCheckSum()) {
                                             break;
@@ -77,7 +77,7 @@ public class CheckSumService {
                             continue;
                         }
                         Map<String, Set<String>> map = new HashMap<>();
-                        long start = System.currentTimeMillis();
+                        //long start = System.currentTimeMillis();
                         int batchPos = traceIdBatch.getBatchPos();
                         // to get all spans from remote
                         for (String port : ports) {
@@ -94,13 +94,13 @@ public class CheckSumService {
                                     spanSet.addAll(entry.getValue());
                                 }
                             }else{
-                                LOGGER.info("get traceIdBatch fail："+JSON.toJSONString(traceIdBatch.getTraceIdList()));
+                                //LOGGER.info("get traceIdBatch fail："+JSON.toJSONString(traceIdBatch.getTraceIdList()));
                             }
                         }
                         dealBatch = batchPos;
                         dealMD5(map);
-                        long end = System.currentTimeMillis();
-                        countTime = countTime + (end - start);
+                        //long end = System.currentTimeMillis();
+                        //countTime = countTime + (end - start);
                     } catch (Exception e) {
                         // record batchPos when an exception  occurs.
                         int batchPos = 0;

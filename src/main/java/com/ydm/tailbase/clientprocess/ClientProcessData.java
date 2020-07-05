@@ -80,7 +80,7 @@ public class ClientProcessData implements Runnable {
             URL url = new URL(path);
             HttpURLConnection httpURLConnection =(HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
             int contentLength = httpURLConnection.getContentLength();
-            LOGGER.info("contentLength:::::::::"+contentLength);
+            //LOGGER.info("contentLength:::::::::"+contentLength);
             httpURLConnection.connect();
             InputStream input = httpURLConnection.getInputStream();
             BufferedReader bf = new BufferedReader(new InputStreamReader(input));
@@ -117,11 +117,11 @@ public class ClientProcessData implements Runnable {
                     // donot produce data, wait backend to consume data
                     // TODO to use lock/notify
                     long startFlag = System.currentTimeMillis();
-                    LOGGER.info("doing "+batchPos);
+                    //LOGGER.info("doing "+batchPos);
                     if((batchPos - dealFlag) > STOP_COUNT){
                         while(true){
                             if((batchPos - dealFlag) < STOP_COUNT){//说明收集错误数据的速度跟上拉取数据的速度了
-                                LOGGER.info("break:::::::"+batchPos + "|"+ dealFlag);
+                                //LOGGER.info("break:::::::"+batchPos + "|"+ dealFlag);
                                 //BATCH_TRACE_LIST.get(pos).clear();
                                 break;
                             }
@@ -129,7 +129,7 @@ public class ClientProcessData implements Runnable {
                             //超时后则继续处理
                             long breakFlag = System.currentTimeMillis();
                             if((breakFlag -startFlag)>3000){
-                                LOGGER.info("break of time:::::::"+batchPos+"|"+dealFlag);
+                                //LOGGER.info("break of time:::::::"+batchPos+"|"+dealFlag);
                                 //BATCH_TRACE_LIST.get(pos).clear();
                                 break;
                             }
@@ -143,7 +143,7 @@ public class ClientProcessData implements Runnable {
                     }
                 }
             }
-            LOGGER.info("finally count over !!!!!!!!!!!!!!!!!");
+            //LOGGER.info("finally count over !!!!!!!!!!!!!!!!!");
             if(badTraceIdList.size() > 0){
                 String json = JSON.toJSONString(badTraceIdList);
                 mutilDeal(json, (int) (count / Constants.BATCH_SIZE),true);
